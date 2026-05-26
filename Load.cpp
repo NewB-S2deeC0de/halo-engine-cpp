@@ -12,6 +12,7 @@ void StringDict::init(int cap, int pool_size)
         capacity = cap;
         nodes = new Node[capacity];
         string_pool = new char[pool_size];
+        id_to_string = new string_view[capacity];
     }
 }
 
@@ -44,6 +45,8 @@ int32_t StringDict::getOrAdd(string_view sv, int count, int32_t &previous_log, i
     nodes[idx].id = current_id;
     nodes[idx].head_log_index = count;
 
+    id_to_string[current_id] = nodes[idx].key;
+
     current_id++;
     return nodes[idx].id;
 }
@@ -73,8 +76,30 @@ int32_t StringDict::getOrAddSimple(string_view sv, int capacity)
     nodes[idx].key = string_view(str, sv.size());
     nodes[idx].id = current_id;
 
+    id_to_string[current_id] = nodes[idx].key;
+
     current_id++;
     return nodes[idx].id;
+}
+
+int StringDict::find(string_view sv) const
+{
+    int idx = hashing(sv, capacity);
+    int start_idx = idx;
+
+    while (nodes[idx].id != -1)
+    {
+        if (nodes[idx].key == sv)
+        {
+            return idx;
+        }
+        idx = (idx + 1) % capacity;
+        if (idx == start_idx)
+        {
+            break;
+        }
+    }
+    return -1;
 }
 
 string_view nextToken(const char *&p, const char *end)
@@ -325,101 +350,197 @@ void swap(int32_t &a, int32_t &b)
     a = a - b;
 }
 
-int lomutoPartition(int32_t * indices, int left, int right, const Log* logs) {
-    
-    long long pivot = logs[indices[right]].timestamp;
-    int i = left - 1; 
+int lomutoPartition(int32_t *indices, int left, int right, const Log *logs)
+{
 
-    for (int j = left; j < right; j++) {
-        if (logs[indices[j]].timestamp <= pivot) {
-            i++; 
+    long long pivot = logs[indices[right]].timestamp;
+    int i = left - 1;
+
+    for (int j = left; j < right; j++)
+    {
+        if (logs[indices[j]].timestamp <= pivot)
+        {
+            i++;
             swap(indices[i], indices[j]);
         }
     }
 
-    i++; 
-    swap(indices[i], indices[right]); 
-    return i; 
+    i++;
+    swap(indices[i], indices[right]);
+    return i;
 }
 
 void quickSort(int32_t *indices, int left, int right, const Log *logs)
 {
-    if (left >= right) {
-        return; 
+    if (left >= right)
+    {
+        return;
     }
     int p = lomutoPartition(indices, left, right, logs);
     quickSort(indices, left, p - 1, logs);
     quickSort(indices, p + 1, right, logs);
 }
 
-void rebuildUserChains(StringDict& dict, Log* logs) {
-    int32_t* temp_indices = new int32_t[1000000]; 
+void rebuildUserChains(StringDict &dict, Log *logs, int line_count)
+{
+    int32_t *temp_indices = new int32_t[line_count];
 
-    for (int i = 0; i < dict.capacity; i++) {
-        int32_t curr_index = dict.nodes[i].head_log_index; 
+    for (int i = 0; i < dict.capacity; i++)
+    {
+        int32_t curr_index = dict.nodes[i].head_log_index;
 
-        if (curr_index == -1) {
-            continue; 
+        if (curr_index == -1)
+        {
+            continue;
         }
 
-        int count = 0; 
-        while (curr_index != -1) {
-            temp_indices[count] = curr_index; 
-            count++; 
+        int count = 0;
+        while (curr_index != -1)
+        {
+            temp_indices[count] = curr_index;
+            count++;
 
             curr_index = logs[curr_index].next_user_log;
         }
 
-        if (count <= 1) {
-            continue; 
+        if (count <= 1)
+        {
+            continue;
         }
 
-        quickSort(temp_indices, 0, count - 1, logs); 
+        quickSort(temp_indices, 0, count - 1, logs);
 
-        dict.nodes[i].head_log_index = temp_indices[0]; 
+        dict.nodes[i].head_log_index = temp_indices[0];
 
-        for (int k = 0; k < count - 1; k++) {
+        for (int k = 0; k < count - 1; k++)
+        {
             logs[temp_indices[k]].next_user_log = temp_indices[k + 1];
         }
 
-        logs[temp_indices[count - 1]].next_user_log = -1; 
+        logs[temp_indices[count - 1]].next_user_log = -1;
     }
 
     delete[] temp_indices;
 }
 
-void rebuildResourceChains(StringDict& dict, Log* logs) {
-    int32_t* temp_indices = new int32_t[1000000]; 
+void rebuildResourceChains(StringDict &dict, Log *logs, int line_count)
+{
+    int32_t *temp_indices = new int32_t[line_count];
 
-    for (int i = 0; i < dict.capacity; i++) {
-        int32_t curr_index = dict.nodes[i].head_log_index; 
+    for (int i = 0; i < dict.capacity; i++)
+    {
+        int32_t curr_index = dict.nodes[i].head_log_index;
 
-        if (curr_index == -1) {
-            continue; 
+        if (curr_index == -1)
+        {
+            continue;
         }
 
-        int count = 0; 
-        while (curr_index != -1) {
-            temp_indices[count] = curr_index; 
-            count++; 
+        int count = 0;
+        while (curr_index != -1)
+        {
+            temp_indices[count] = curr_index;
+            count++;
 
             curr_index = logs[curr_index].next_resource_log;
         }
 
-        if (count <= 1) {
-            continue; 
+        if (count <= 1)
+        {
+            continue;
         }
 
-        quickSort(temp_indices, 0, count - 1, logs); 
+        quickSort(temp_indices, 0, count - 1, logs);
 
-        dict.nodes[i].head_log_index = temp_indices[0]; 
+        dict.nodes[i].head_log_index = temp_indices[0];
 
-        for (int k = 0; k < count - 1; k++) {
+        for (int k = 0; k < count - 1; k++)
+        {
             logs[temp_indices[k]].next_resource_log = temp_indices[k + 1];
         }
 
-        logs[temp_indices[count - 1]].next_resource_log = -1; 
+        logs[temp_indices[count - 1]].next_resource_log = -1;
     }
 
     delete[] temp_indices;
+}
+
+void queryByUserID(string_view id, long long t1, long long t2,
+                   const StringDict &users, const StringDict &devices,
+                   const StringDict &apps, const StringDict &resources,
+                   const Log *logs)
+{
+    int dict_id = users.find(id);
+    if (dict_id == -1)
+    {
+        cout << "Khong tim thay: " << id << "\n";
+        return;
+    }
+
+    int32_t current_log = users.nodes[dict_id].head_log_index;
+    int match_count = 0;
+
+    while (current_log != -1)
+    {
+        long long ts = logs[current_log].timestamp;
+
+        if (ts > t2)
+        {
+            break;
+        }
+        if (ts >= t1)
+        {
+            string_view device_str = devices.id_to_string[logs[current_log].device_id];
+            string_view app_str = apps.id_to_string[logs[current_log].app_id];
+            string_view resource_str = resources.id_to_string[logs[current_log].resource_id];
+
+            cout << device_str << " - " << app_str << " - " << resource_str << "\n";
+            match_count++;
+        }
+        current_log = logs[current_log].next_user_log;
+    }
+
+    if (match_count == 0) {
+        cout << "Nguoi dung nay khong co hoat dong nao trong thoi gian nay\n";
+    }
+}
+
+void queryByResourceID(string_view id, long long t1, long long t2,
+                   const StringDict &users, const StringDict &devices,
+                   const StringDict &apps, const StringDict &resources,
+                   const Log *logs)
+{
+    int dict_id = resources.find(id);
+    if (dict_id == -1)
+    {
+        cout << "Khong tim thay: " << id << "\n";
+        return;
+    }
+
+    int32_t current_log = resources.nodes[dict_id].head_log_index;
+    int match_count = 0;
+
+    while (current_log != -1)
+    {
+        long long ts = logs[current_log].timestamp;
+
+        if (ts > t2)
+        {
+            break;
+        }
+        if (ts >= t1)
+        {
+            string_view user_sv = users.id_to_string[logs[current_log].user_id];
+            string_view device_str = devices.id_to_string[logs[current_log].device_id];
+            string_view app_str = apps.id_to_string[logs[current_log].app_id];
+            
+            cout << user_sv << " - " << device_str << " - " << app_str << "\n";
+            match_count++;
+        }
+        current_log = logs[current_log].next_resource_log;
+    }
+
+    if (match_count == 0) {
+        cout << "Nguoi dung nay khong co hoat dong nao trong thoi gian nay\n";
+    }
 }

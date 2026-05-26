@@ -45,15 +45,19 @@ struct StringDict
     char *string_pool = nullptr;
     int pool_offset = 0;
 
+    string_view *id_to_string = nullptr;
+
     void init(int cap, int pool_size);
     int32_t getOrAdd(string_view sv, int count, int32_t &previous_log, int capacity);
-    int32_t getOrAddSimple(string_view sv, int capacity); 
+    int32_t getOrAddSimple(string_view sv, int capacity);
+
+    int find(string_view sv) const;
 };
 
 // capactity = n / load_factor mong muon = 100,000 / 0.7 = 142,857
 // so nguyen to gan nhat la 142,867 hoac 1429 cho 1000 user
-const int CAPACITY = 142867;
-const int APP_CAPACITY = 14287;
+const int CAPACITY = 1429;
+const int APP_CAPACITY = 1429;
 
 string_view nextToken(const char *&p, const char *end);
 int8_t lookupLocation(string_view sv);
@@ -61,9 +65,18 @@ int8_t lookupEvent(string_view sv);
 bool parseLine(const char *&p, const char *end, Log &log);
 void loadData(const char *filename, Log *&logs, StringDict &users, StringDict &devices, StringDict &apps, StringDict &resources, char *&buf, int &count);
 
-void quickSort(int32_t* indices, int low, int high, const Log* logs);
+void quickSort(int32_t *indices, int low, int high, const Log *logs);
 
-void rebuildUserChains(StringDict& dict, Log* logs); 
-void rebuildResourceChains(StringDict& dict, Log* logs); 
+void rebuildUserChains(StringDict &dict, Log *logs, int line_count);
+void rebuildResourceChains(StringDict &dict, Log *logs, int line_count);
+
+void queryByUserID(string_view id, long long t1, long long t2,
+                   const StringDict &users, const StringDict &devices,
+                   const StringDict &apps, const StringDict &resources,
+                   const Log *logs);
+void queryByResourceID(string_view id, long long t1, long long t2,
+                       const StringDict &users, const StringDict &devices,
+                       const StringDict &apps, const StringDict &resources,
+                       const Log *logs);
 
 #endif
