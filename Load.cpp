@@ -6,10 +6,80 @@ using std::cout;
 
 #include "Load.h"
 
+void StringDict::init(int cap, int pool_size)
+{
+    {
+        capacity = cap;
+        nodes = new Node[capacity];
+        string_pool = new char[pool_size];
+    }
+}
+
+int32_t StringDict::getOrAdd(string_view sv, int count, int32_t &previous_log, int capacity)
+{
+    int idx = hashing(sv, capacity);
+    int start_idx = idx; 
+
+    while (nodes[idx].id != -1)
+    {
+        if (nodes[idx].key == sv)
+        {
+            previous_log = nodes[idx].head_log_index;
+            nodes[idx].head_log_index = count;
+            return nodes[idx].id;
+        }
+        idx = (idx + 1) % capacity;
+        if (idx == start_idx) {
+            cout << "Bang user da day, khong the chen them\n"; 
+            break;
+        }
+    }
+
+    char *str = string_pool + pool_offset;
+    memcpy(str, sv.data(), sv.size());
+    pool_offset += sv.size();
+
+    nodes[idx].key = string_view(str, sv.size());
+    nodes[idx].id = current_id;
+    nodes[idx].head_log_index = count;
+
+    current_id++;
+    return nodes[idx].id;
+}
+
+int32_t StringDict::getOrAddSimple(string_view sv, int capacity)
+{
+    int idx = hashing(sv, capacity);
+    int start_idx = idx; 
+    while (nodes[idx].id != -1)
+    {
+        if (nodes[idx].key == sv)
+        {
+            return nodes[idx].id;
+        }
+        idx = (idx + 1) % capacity;
+        if (idx == start_idx) {
+            cout << "bang app da day\n"; 
+            break;
+        }
+    }
+
+    char *str = string_pool + pool_offset;
+    memcpy(str, sv.data(), sv.size());
+    pool_offset += sv.size();
+
+    nodes[idx].key = string_view(str, sv.size());
+    nodes[idx].id = current_id;
+
+    current_id++;
+    return nodes[idx].id;
+}
+
 string_view nextToken(const char *&p, const char *end)
 {
     const char *start = p;
-    while (p < end && (*p == '\r' || *p == '\n')) {
+    while (p < end && (*p == '\r' || *p == '\n'))
+    {
         p++;
     }
     while (p < end && *p != '\n' && *p != '\r' && *p != ',')
@@ -34,7 +104,7 @@ string_view nextToken(const char *&p, const char *end)
     return string_view(start, length);
 }
 
-int lookupLocation(string_view sv)
+int8_t lookupLocation(string_view sv)
 {
     if (sv.size() < 2)
     {
@@ -111,7 +181,7 @@ int lookupLocation(string_view sv)
     }
 }
 
-int lookupEvent(string_view sv)
+int8_t lookupEvent(string_view sv)
 {
     switch (sv.size())
     {
@@ -142,108 +212,89 @@ int lookupEvent(string_view sv)
     }
 }
 
-bool parseLine(const char *&p, const char *end, Log &log)
-{
-    if (p >= end)
-    {
-        return false;
-    }
-
-    log.user_id = nextToken(p, end);
-    log.device_id = nextToken(p, end);
-    log.app_id = nextToken(p, end);
-    log.resource_id = nextToken(p, end);
-
-    string_view event = nextToken(p, end);
-    string_view location = nextToken(p, end);
-    string_view timestamp = nextToken(p, end);
-
-    log.location_index = lookupLocation(location);
-    log.event_type_index = lookupEvent(event);
-    long long ts = 0;
-    std::from_chars(timestamp.data(), timestamp.data() + timestamp.size(), ts);
-    log.timestamp = ts;
-    return true;
-}
-
-void loadData(const char *filename, Log *&logs, HashTable &ht_user, HashTable &ht_resource, char *&buf, int &count)
+void loadData(const char *filename, Log *&logs, StringDict &users, StringDict &devices, StringDict &apps, StringDict &resources, char *&buf, int &count)
 {
     FILE *f = fopen(filename, "rb");
     if (f == nullptr)
     {
-        cout << "fopen failed: " << strerror(errno) << "\n";
         return;
     }
-    fseek(f, 0, SEEK_END);
-    long file_size = ftell(f);
-    fseek(f, 0, SEEK_SET);
 
-    buf = new char[file_size];
-    size_t bytes = fread(buf, sizeof(char), file_size, f);
-    fclose(f);
-
-    const char *p = buf;
-    const char *end = buf + bytes;
-
-    while (p < end && *p != '\n')
-    {
-        p++;
+    int character; 
+    while ((character = fgetc(f)) != EOF && character != '\n') {
+        //
     }
-    if (p < end)
-    {
-        p++;
-    }
+
+    const int CHUNK_SIZE = 50 * 1024 * 1024;
+    buf = new char[CHUNK_SIZE];
+    int leftover_bytes = 0;
 
     count = 0;
-    while (count < line_count && parseLine(p, end, logs[count]))
+    while (true)
     {
-        int user_id_hash = hashing(logs[count].user_id);
-        int start_hash = user_id_hash; 
-        while (ht_user.node[user_id_hash].head_log_index != -1)
+        size_t bytes_read = fread(buf + leftover_bytes, 1, CHUNK_SIZE - leftover_bytes, f);
+        if (bytes_read == 0 && leftover_bytes == 0)
         {
-            // neu nhu la trung user
-            if (logs[count].user_id == ht_user.node[user_id_hash].key)
-            {
-                logs[count].previous_user_log = ht_user.node[user_id_hash].head_log_index; // cap nhat lai log trung user truoc log nay
-                ht_user.node[user_id_hash].head_log_index = count;                         // cap nhat lai log moi nhat trung user
-                break;
-            }
-            user_id_hash = (user_id_hash + 1) % capacity;
-            if (user_id_hash == start_hash) {
-                cout << "loi: bang user da het cho\n";
-            }
-        }
-        if (ht_user.node[user_id_hash].head_log_index == -1)
-        {
-            logs[count].previous_user_log = -1;                // khong co log nao trung user truoc log nay
-            ht_user.node[user_id_hash].head_log_index = count; // logs[0] la log moi nhat trung user nay
-            ht_user.node[user_id_hash].key = logs[count].user_id;
-            ht_user.bucket_used++;
+            break;
         }
 
-        int resource_id_hash = hashing(logs[count].resource_id);
-        start_hash = resource_id_hash; 
-        while (ht_resource.node[resource_id_hash].head_log_index != -1)
+        size_t valid_bytes = leftover_bytes + bytes_read;
+        const char *p = buf;
+        const char *end = buf + valid_bytes;
+
+        const char *safe_end = end - 1;
+        if (bytes_read == CHUNK_SIZE - leftover_bytes)
         {
-            if (ht_resource.node[resource_id_hash].key == logs[count].resource_id)
+            while (safe_end > buf && *safe_end != '\n')
             {
-                logs[count].previous_resource_log = ht_resource.node[resource_id_hash].head_log_index;
-                ht_resource.node[resource_id_hash].head_log_index = count;
-                break;
+                safe_end--;
             }
-            resource_id_hash = (resource_id_hash + 1) % capacity; 
-            if (resource_id_hash == start_hash) {
-                cout << "loi: bang resource da het cho\n";
-            }
+            safe_end++;
         }
-        if (ht_resource.node[resource_id_hash].head_log_index == -1) {
-            ht_resource.node[resource_id_hash].key = logs[count].resource_id;
-            logs[count].previous_resource_log = -1; 
-            ht_resource.node[resource_id_hash].head_log_index = count;
-            ht_resource.bucket_used++;
+        else
+        {
+            safe_end = end;
         }
 
-        count++;
+        while (p < safe_end)
+        {
+            while (p < safe_end && (*p == '\n' || *p == '\r'))
+            {
+                p++;
+            }
+            if (p >= safe_end)
+            {
+                break;
+            }
+
+            string_view user_sv = nextToken(p, end);
+            string_view device_sv = nextToken(p, end);
+            string_view app_sv = nextToken(p, end);
+            string_view resource_sv = nextToken(p, end);
+            string_view event = nextToken(p, end);
+            string_view location = nextToken(p, end);
+            string_view timestamp = nextToken(p, end);
+
+            logs[count].user_id = users.getOrAdd(user_sv, count, logs[count].previous_user_log, CAPACITY);
+            logs[count].resource_id = resources.getOrAdd(resource_sv, count, logs[count].previous_resource_log, CAPACITY);
+
+            logs[count].device_id = devices.getOrAddSimple(device_sv, CAPACITY);
+            logs[count].app_id = apps.getOrAddSimple(app_sv, APP_CAPACITY);
+
+            logs[count].event_type_index = lookupEvent(event);
+            logs[count].location_index = lookupLocation(location);
+
+            long long ts = 0;
+            std::from_chars(timestamp.data(), timestamp.data() + timestamp.size(), ts);
+            logs[count].timestamp = ts;
+
+            count++;
+        }
+
+        leftover_bytes = end - safe_end; 
+        if (leftover_bytes > 0) {
+            memmove(buf, safe_end, leftover_bytes);
+        }
     }
 }
 
@@ -258,12 +309,7 @@ unsigned long long hash_fnv1a(const char *str, size_t len)
     return hash;
 }
 
-int hashing(string_view user_id)
+int hashing(string_view user_id, int capacity)
 {
     return hash_fnv1a(user_id.data(), user_id.size()) % capacity;
-}
-
-int load_factor(HashTable ht)
-{
-    return ht.bucket_used / capacity;
 }
