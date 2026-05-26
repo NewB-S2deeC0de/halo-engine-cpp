@@ -18,7 +18,7 @@ void StringDict::init(int cap, int pool_size)
 int32_t StringDict::getOrAdd(string_view sv, int count, int32_t &previous_log, int capacity)
 {
     int idx = hashing(sv, capacity);
-    int start_idx = idx; 
+    int start_idx = idx;
 
     while (nodes[idx].id != -1)
     {
@@ -29,8 +29,9 @@ int32_t StringDict::getOrAdd(string_view sv, int count, int32_t &previous_log, i
             return nodes[idx].id;
         }
         idx = (idx + 1) % capacity;
-        if (idx == start_idx) {
-            cout << "Bang user da day, khong the chen them\n"; 
+        if (idx == start_idx)
+        {
+            cout << "Bang user da day, khong the chen them\n";
             break;
         }
     }
@@ -50,7 +51,7 @@ int32_t StringDict::getOrAdd(string_view sv, int count, int32_t &previous_log, i
 int32_t StringDict::getOrAddSimple(string_view sv, int capacity)
 {
     int idx = hashing(sv, capacity);
-    int start_idx = idx; 
+    int start_idx = idx;
     while (nodes[idx].id != -1)
     {
         if (nodes[idx].key == sv)
@@ -58,8 +59,9 @@ int32_t StringDict::getOrAddSimple(string_view sv, int capacity)
             return nodes[idx].id;
         }
         idx = (idx + 1) % capacity;
-        if (idx == start_idx) {
-            cout << "bang app da day\n"; 
+        if (idx == start_idx)
+        {
+            cout << "bang app da day\n";
             break;
         }
     }
@@ -220,8 +222,9 @@ void loadData(const char *filename, Log *&logs, StringDict &users, StringDict &d
         return;
     }
 
-    int character; 
-    while ((character = fgetc(f)) != EOF && character != '\n') {
+    int character;
+    while ((character = fgetc(f)) != EOF && character != '\n')
+    {
         //
     }
 
@@ -275,8 +278,8 @@ void loadData(const char *filename, Log *&logs, StringDict &users, StringDict &d
             string_view location = nextToken(p, end);
             string_view timestamp = nextToken(p, end);
 
-            logs[count].user_id = users.getOrAdd(user_sv, count, logs[count].previous_user_log, CAPACITY);
-            logs[count].resource_id = resources.getOrAdd(resource_sv, count, logs[count].previous_resource_log, CAPACITY);
+            logs[count].user_id = users.getOrAdd(user_sv, count, logs[count].next_user_log, CAPACITY);
+            logs[count].resource_id = resources.getOrAdd(resource_sv, count, logs[count].next_resource_log, CAPACITY);
 
             logs[count].device_id = devices.getOrAddSimple(device_sv, CAPACITY);
             logs[count].app_id = apps.getOrAddSimple(app_sv, APP_CAPACITY);
@@ -291,8 +294,9 @@ void loadData(const char *filename, Log *&logs, StringDict &users, StringDict &d
             count++;
         }
 
-        leftover_bytes = end - safe_end; 
-        if (leftover_bytes > 0) {
+        leftover_bytes = end - safe_end;
+        if (leftover_bytes > 0)
+        {
             memmove(buf, safe_end, leftover_bytes);
         }
     }
@@ -312,4 +316,110 @@ unsigned long long hash_fnv1a(const char *str, size_t len)
 int hashing(string_view user_id, int capacity)
 {
     return hash_fnv1a(user_id.data(), user_id.size()) % capacity;
+}
+
+void swap(int32_t &a, int32_t &b)
+{
+    a = a + b;
+    b = a - b;
+    a = a - b;
+}
+
+int lomutoPartition(int32_t * indices, int left, int right, const Log* logs) {
+    
+    long long pivot = logs[indices[right]].timestamp;
+    int i = left - 1; 
+
+    for (int j = left; j < right; j++) {
+        if (logs[indices[j]].timestamp <= pivot) {
+            i++; 
+            swap(indices[i], indices[j]);
+        }
+    }
+
+    i++; 
+    swap(indices[i], indices[right]); 
+    return i; 
+}
+
+void quickSort(int32_t *indices, int left, int right, const Log *logs)
+{
+    if (left >= right) {
+        return; 
+    }
+    int p = lomutoPartition(indices, left, right, logs);
+    quickSort(indices, left, p - 1, logs);
+    quickSort(indices, p + 1, right, logs);
+}
+
+void rebuildUserChains(StringDict& dict, Log* logs) {
+    int32_t* temp_indices = new int32_t[1000000]; 
+
+    for (int i = 0; i < dict.capacity; i++) {
+        int32_t curr_index = dict.nodes[i].head_log_index; 
+
+        if (curr_index == -1) {
+            continue; 
+        }
+
+        int count = 0; 
+        while (curr_index != -1) {
+            temp_indices[count] = curr_index; 
+            count++; 
+
+            curr_index = logs[curr_index].next_user_log;
+        }
+
+        if (count <= 1) {
+            continue; 
+        }
+
+        quickSort(temp_indices, 0, count - 1, logs); 
+
+        dict.nodes[i].head_log_index = temp_indices[0]; 
+
+        for (int k = 0; k < count - 1; k++) {
+            logs[temp_indices[k]].next_user_log = temp_indices[k + 1];
+        }
+
+        logs[temp_indices[count - 1]].next_user_log = -1; 
+    }
+
+    delete[] temp_indices;
+}
+
+void rebuildResourceChains(StringDict& dict, Log* logs) {
+    int32_t* temp_indices = new int32_t[1000000]; 
+
+    for (int i = 0; i < dict.capacity; i++) {
+        int32_t curr_index = dict.nodes[i].head_log_index; 
+
+        if (curr_index == -1) {
+            continue; 
+        }
+
+        int count = 0; 
+        while (curr_index != -1) {
+            temp_indices[count] = curr_index; 
+            count++; 
+
+            curr_index = logs[curr_index].next_resource_log;
+        }
+
+        if (count <= 1) {
+            continue; 
+        }
+
+        quickSort(temp_indices, 0, count - 1, logs); 
+
+        dict.nodes[i].head_log_index = temp_indices[0]; 
+
+        for (int k = 0; k < count - 1; k++) {
+            logs[temp_indices[k]].next_resource_log = temp_indices[k + 1];
+        }
+
+        logs[temp_indices[count - 1]].next_resource_log = -1; 
+    }
+
+    delete[] temp_indices;
 }
