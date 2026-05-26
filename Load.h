@@ -17,8 +17,8 @@ struct Log
     int8_t location_index;
     long long timestamp;
 
-    int32_t previous_user_log = -1; // log truoc do co cung key
-    int32_t previous_resource_log = -1;
+    int32_t next_user_log = -1; // log truoc do co cung key
+    int32_t next_resource_log = -1;
 };
 
 const int event_count = 8;
@@ -53,12 +53,17 @@ struct StringDict
 // capactity = n / load_factor mong muon = 100,000 / 0.7 = 142,857
 // so nguyen to gan nhat la 142,867 hoac 1429 cho 1000 user
 const int CAPACITY = 142867;
-const int APP_CAPACITY = 14293;
+const int APP_CAPACITY = 14287;
 
 string_view nextToken(const char *&p, const char *end);
 int8_t lookupLocation(string_view sv);
 int8_t lookupEvent(string_view sv);
 bool parseLine(const char *&p, const char *end, Log &log);
 void loadData(const char *filename, Log *&logs, StringDict &users, StringDict &devices, StringDict &apps, StringDict &resources, char *&buf, int &count);
+
+void quickSort(int32_t* indices, int low, int high, const Log* logs);
+
+void rebuildUserChains(StringDict& dict, Log* logs); 
+void rebuildResourceChains(StringDict& dict, Log* logs); 
 
 #endif

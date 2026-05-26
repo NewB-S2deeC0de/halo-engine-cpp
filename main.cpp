@@ -29,6 +29,10 @@ int main()
         cout << "Load len RAM thanh cong\n";
     }
 
+    rebuildUserChains(user_dict, log_list);
+    rebuildResourceChains(resource_dict, log_list); 
+
+    
 
     auto end = std::chrono::high_resolution_clock::now();
 
