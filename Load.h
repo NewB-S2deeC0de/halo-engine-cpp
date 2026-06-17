@@ -19,6 +19,7 @@ struct Log
 
     int32_t next_user_log = -1; // log truoc do co cung key
     int32_t next_resource_log = -1;
+    int32_t next_device_log = -1;
 };
 
 const int event_count = 8;
@@ -69,6 +70,7 @@ void quickSort(int32_t *indices, int low, int high, const Log *logs);
 
 void rebuildUserChains(StringDict &dict, Log *logs, int line_count);
 void rebuildResourceChains(StringDict &dict, Log *logs, int line_count);
+void rebuildDeviceChains(StringDict &dict, Log* logs, int line_count);
 
 void queryByUserID(string_view id, long long t1, long long t2,
                    const StringDict &users, const StringDict &devices,
@@ -89,4 +91,12 @@ struct TopResource
 void queryTop10Resources(long long t1, long long t2,
                          const StringDict &resources, Log *logs);
 
+void detectConsecutiveFailedLogins(const StringDict &users, const Log *logs, 
+                                    const char* out_filename);
+void detectMultipleDevicesLogin(const StringDict &users, const Log *logs, 
+                                const char* out_filename);
+void detectAbnormalResourceAccess(const StringDict &devices, const Log *logs, 
+                                const char* out_filename);
+void detectOutsideWorkingHours(const StringDict &users, const Log *logs, 
+                                    const char* out_filename);
 #endif
