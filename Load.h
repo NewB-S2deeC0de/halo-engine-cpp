@@ -56,14 +56,14 @@ struct StringDict
 
 // capactity = n / load_factor mong muon = 100,000 / 0.7 = 142,857
 // so nguyen to gan nhat la 142,867 hoac 1429 cho 1000 user
-const int CAPACITY = 1429;
-const int APP_CAPACITY = 1429;
+const int CAPACITY = 142867;
+const int APP_CAPACITY = 14287;
 
 string_view nextToken(const char *&p, const char *end);
 int8_t lookupLocation(string_view sv);
 int8_t lookupEvent(string_view sv);
 bool parseLine(const char *&p, const char *end, Log &log);
-void loadData(const char *filename, Log *&logs, StringDict &users, StringDict &devices, StringDict &apps, StringDict &resources, char *&buf, int &count);
+void loadData(const char *filename, Log *&logs, StringDict &users, StringDict &devices, StringDict &apps, StringDict &resources, char *&buf, int &count, long long ts_now);
 
 void quickSort(int32_t *indices, int low, int high, const Log *logs);
 
@@ -78,5 +78,15 @@ void queryByResourceID(string_view id, long long t1, long long t2,
                        const StringDict &users, const StringDict &devices,
                        const StringDict &apps, const StringDict &resources,
                        const Log *logs);
+
+struct TopResource
+{
+    int32_t id;
+    int count;
+    int32_t max_ts_log;
+};
+
+void queryTop10Resources(long long t1, long long t2,
+                         const StringDict &resources, Log *logs);
 
 #endif

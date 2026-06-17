@@ -104,11 +104,12 @@ int StringDict::find(string_view sv) const
 
 string_view nextToken(const char *&p, const char *end)
 {
-    const char *start = p;
     while (p < end && (*p == '\r' || *p == '\n'))
     {
         p++;
     }
+    const char *start = p;
+
     while (p < end && *p != '\n' && *p != '\r' && *p != ',')
     {
         p++;
@@ -133,7 +134,7 @@ string_view nextToken(const char *&p, const char *end)
 
 int8_t lookupLocation(string_view sv)
 {
-    if (sv.size() < 2)
+    if (sv.size() != 2)
     {
         return -1;
     }
@@ -214,38 +215,71 @@ int8_t lookupEvent(string_view sv)
     {
     case 5:
     {
-        return 0;
+        if(sv == "LOGIN") return 0;        
+        break;
     }
     case 6:
     {
-        return sv[0] == 'L' ? 1 : 3;
+        if (sv == "LOGOUT") return 1; 
+        if (sv == "ACCESS") return 3;
+        break;
     }
     case 8:
     {
-        return sv[0] == 'O' ? 5 : 6;
+        if (sv == "OPEN_APP") return 5;
+        if (sv == "DOWNLOAD") return 6;
+        break;
     }
     case 12:
     {
-        return sv[0] == 'F' ? 4 : 7;
+        if (sv == "FAILED_LOGIN") return 4;
+        if (sv == "ADMIN_ACTION") return 7;
+        break;
     }
     case 13:
     {
-        return 2;
-    }
-    default:
-    {
-        return -1;
+        if (sv == "TOKEN_REFRESH") return 2;
+        break;
     }
     }
+    return -1;
 }
 
-void loadData(const char *filename, Log *&logs, StringDict &users, StringDict &devices, StringDict &apps, StringDict &resources, char *&buf, int &count)
+inline bool isValidID(string_view sv, string_view prefix) 
+{
+    // Kiem tra chuoi co dai hon tham so prefix hay khogn
+    if (sv.size() <= prefix.size())
+    {
+        return false;
+    }
+
+    // Kiem tra tien to thuc te co khop voi tien to ly thuyet (tham so prefix) hay khong
+    if (sv.substr(0, prefix.size()) != prefix) 
+    {
+        return false;
+    }
+
+    // Kiem tra phan con lai co hoan toan la so ('0' -> '9') hay khong
+    for (size_t i = prefix.size(); i < sv.size(); i++) 
+    {
+        if (sv[i] < '0' || sv[i] > '9')
+        {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+void loadData(const char *filename, Log *&logs, StringDict &users, StringDict &devices, StringDict &apps, StringDict &resources, char *&buf, int &count, long long ts_now)
 {
     FILE *f = fopen(filename, "rb");
     if (f == nullptr)
     {
         return;
     }
+
+    FILE *error_f = fopen("error_logs.csv", "wb");
 
     int character;
     while ((character = fgetc(f)) != EOF && character != '\n')
@@ -295,6 +329,8 @@ void loadData(const char *filename, Log *&logs, StringDict &users, StringDict &d
                 break;
             }
 
+            const char* start_of_line = p;
+
             string_view user_sv = nextToken(p, end);
             string_view device_sv = nextToken(p, end);
             string_view app_sv = nextToken(p, end);
@@ -303,18 +339,74 @@ void loadData(const char *filename, Log *&logs, StringDict &users, StringDict &d
             string_view location = nextToken(p, end);
             string_view timestamp = nextToken(p, end);
 
+            // Kiem tra token rong
+            if (user_sv.empty() || device_sv.empty() || app_sv.empty() || resource_sv.empty() || 
+                event.empty() || location.empty() || timestamp.empty())
+            {
+                if (error_f)
+                {
+                    fwrite(start_of_line, 1, p - start_of_line, error_f);
+                }
+                continue;
+            }
+            int8_t event_type_idx = lookupEvent(event);
+            int8_t location_idx = lookupLocation(location); 
+            // Kiem tra token sai tien to, hau to khong
+            if (!isValidID(user_sv, "U") ||
+                !isValidID(device_sv, "D") ||
+                !isValidID(app_sv, "APP") ||
+                !isValidID(resource_sv, "R") ||
+                event_type_idx == -1 || 
+                location_idx == -1)
+            {
+                if (error_f) {
+                    fwrite(start_of_line, 1, p - start_of_line, error_f);
+                }
+                continue;
+            }
+
+            // Kiem tra ts co chua toan ky tu so hay khong
+            bool is_valid_ts = true;
+            for(char c : timestamp) 
+            {
+                if (c < '0' || c > '9')
+                {
+                    is_valid_ts = false;
+                    break;
+                }
+            }
+
+            if (!is_valid_ts) 
+            {
+                if (error_f) 
+                {
+                    fwrite(start_of_line, 1, p - start_of_line, error_f);
+                }
+                continue;
+            }
+
+            // Kiem tra ts co hop le khong
+            long long ts = 0;
+            std::from_chars(timestamp.data(), timestamp.data() + timestamp.size(), ts);
+            if (ts < 1600000000 || ts > ts_now)
+            {
+                if (error_f) 
+                {
+                    fwrite(start_of_line, 1, p - start_of_line, error_f);
+                }
+                continue;
+            }
+
             logs[count].user_id = users.getOrAdd(user_sv, count, logs[count].next_user_log, CAPACITY);
             logs[count].resource_id = resources.getOrAdd(resource_sv, count, logs[count].next_resource_log, CAPACITY);
 
             logs[count].device_id = devices.getOrAddSimple(device_sv, CAPACITY);
             logs[count].app_id = apps.getOrAddSimple(app_sv, APP_CAPACITY);
 
-            logs[count].event_type_index = lookupEvent(event);
-            logs[count].location_index = lookupLocation(location);
+            logs[count].event_type_index = event_type_idx;
+            logs[count].location_index = location_idx;
 
-            long long ts = 0;
-            std::from_chars(timestamp.data(), timestamp.data() + timestamp.size(), ts);
-            logs[count].timestamp = ts;
+            logs[count].timestamp = ts;         
 
             count++;
         }
@@ -324,6 +416,11 @@ void loadData(const char *filename, Log *&logs, StringDict &users, StringDict &d
         {
             memmove(buf, safe_end, leftover_bytes);
         }
+    }
+
+    if (error_f) 
+    {
+        fclose(error_f);
     }
 }
 
@@ -345,9 +442,9 @@ int hashing(string_view user_id, int capacity)
 
 void swap(int32_t &a, int32_t &b)
 {
-    a = a + b;
-    b = a - b;
-    a = a - b;
+    int32_t temp = a; 
+    a = b; 
+    b = temp; 
 }
 
 int lomutoPartition(int32_t *indices, int left, int right, const Log *logs)
@@ -500,15 +597,16 @@ void queryByUserID(string_view id, long long t1, long long t2,
         current_log = logs[current_log].next_user_log;
     }
 
-    if (match_count == 0) {
+    if (match_count == 0)
+    {
         cout << "Nguoi dung nay khong co hoat dong nao trong thoi gian nay\n";
     }
 }
 
 void queryByResourceID(string_view id, long long t1, long long t2,
-                   const StringDict &users, const StringDict &devices,
-                   const StringDict &apps, const StringDict &resources,
-                   const Log *logs)
+                       const StringDict &users, const StringDict &devices,
+                       const StringDict &apps, const StringDict &resources,
+                       const Log *logs)
 {
     int dict_id = resources.find(id);
     if (dict_id == -1)
@@ -533,14 +631,132 @@ void queryByResourceID(string_view id, long long t1, long long t2,
             string_view user_sv = users.id_to_string[logs[current_log].user_id];
             string_view device_str = devices.id_to_string[logs[current_log].device_id];
             string_view app_str = apps.id_to_string[logs[current_log].app_id];
-            
+
             cout << user_sv << " - " << device_str << " - " << app_str << "\n";
             match_count++;
         }
         current_log = logs[current_log].next_resource_log;
     }
 
-    if (match_count == 0) {
+    if (match_count == 0)
+    {
         cout << "Nguoi dung nay khong co hoat dong nao trong thoi gian nay\n";
+    }
+}
+
+void queryTop10Resources(long long t1, long long t2,
+                         const StringDict &resources, Log *logs)
+{
+    TopResource top10[10];
+    for (int i = 0; i < 10; i++)
+    {
+        top10[i].id = -1;
+        top10[i].count = 0;
+        top10[i].max_ts_log = -1;
+    }
+
+    for (int i = 0; i < resources.capacity; i++)
+    {
+        if (resources.nodes[i].id == -1)
+        {
+            continue;
+        }
+
+        int current_count = 0;
+        int32_t current_max_ts_log = -1;
+        int32_t current_log = resources.nodes[i].head_log_index;
+        while (current_log != -1)
+        {
+            long long ts = logs[current_log].timestamp;
+
+            if (ts > t2)
+            {
+                break;
+            }
+
+            if (ts >= t1)
+            {
+                current_count++;
+                current_max_ts_log = current_log;
+            }
+            current_log = logs[current_log].next_resource_log;
+        }
+
+        if (current_count == 0)
+        {
+            continue;
+        }
+
+        bool replace = false;
+        if (current_count > top10[9].count)
+        {
+            replace = true;
+        }
+        else if (current_count == top10[9].count)
+        {
+            long long ts1 = logs[current_max_ts_log].timestamp;
+            long long ts2 = logs[top10[9].max_ts_log].timestamp;
+
+            if (ts1 > ts2)
+            {
+                replace = true;
+            }
+        }
+
+        if (replace)
+        {
+            top10[9].id = resources.nodes[i].id;
+            top10[9].count = current_count;
+            top10[9].max_ts_log = current_max_ts_log;
+
+            for (int j = 8; j >= 0; j--)
+            {
+                bool swap = false;
+
+                if (top10[j].id == -1)
+                {
+                    swap = true;
+                }
+                else if (top10[j + 1].count > top10[j].count)
+                {
+                    swap = true;
+                }
+                else if (top10[j + 1].count == top10[j].count)
+                {
+                    if (logs[top10[j + 1].max_ts_log].timestamp >= logs[top10[j].max_ts_log].timestamp)
+                    {
+                        swap = true;
+                    }
+                }
+
+                if (swap)
+                {
+                    TopResource temp = top10[j];
+                    top10[j] = top10[j + 1];
+                    top10[j + 1] = temp;
+                }
+                else
+                {
+                    break;
+                }
+            }
+        }
+    }
+
+    cout << "=== TOP 10 TAI NGUYEN DUOC TRUY CAP NHIEU NHAT ===\n";
+    bool check = false;
+    for (int i = 0; i < 10; i++)
+    {
+        if (top10[i].count > 0)
+        {
+            check = true;
+            string_view res = resources.id_to_string[top10[i].id];
+            cout << "Top " << (i + 1) << ": " << res << "| So luot: " << top10[i].count << "\n";
+        }
+    }
+
+    if (!check)
+    {
+        cout << "Khong co truy cap nao den tai nguyen trong thoi gian nay\n";
     }
 }
