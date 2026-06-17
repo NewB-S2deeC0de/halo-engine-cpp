@@ -1012,3 +1012,154 @@ void detectMultipleDevicesLogin(const StringDict &users, const Log *logs, const 
     cout << "[Bao cao] Phat hien " << total_violations << " nguoi dung dang nhap nhieu thiet bi bat thuong.\n";
     cout << "[Bao cao] Chi tiet duoc luu tai file: " << out_filename << "\n";
 }
+
+void detectAbnormalResourceAccess(const StringDict &devices, const Log *logs, const char* out_filename)
+{
+    FILE *f_out = fopen(out_filename, "w");
+    if (f_out == nullptr)
+    {
+        cout << "Loi: Khong the tao file bao cao " << out_filename << "\n";
+        return;
+    }
+
+    fprintf(f_out, "device_id,unique_resources_count,window_end_timestamp\n");
+    int total_violations = 0;
+
+    const int RESOURCE_THRESHOLD = 20;     // >= 20 tai nguyen khac nhau
+    const long long TIME_WINDOW = 60;      // 60s
+
+    const int MAX_WINDOW = 1000; 
+
+    for (int i = 0; i < devices.capacity; i++)
+    {
+        if (devices.nodes[i].id == -1) continue;
+
+        int32_t curr_idx = devices.nodes[i].head_log_index;
+        bool violated = false;
+        string_view device_sv = devices.nodes[i].key;
+
+        int32_t window_resources[MAX_WINDOW];
+        long long window_timestamps[MAX_WINDOW];
+        int w_size = 0;
+
+        while (curr_idx != -1 && !violated)
+        {
+            long long current_ts = logs[curr_idx].timestamp;
+
+            if (w_size < MAX_WINDOW)
+            {
+                window_resources[w_size] = logs[curr_idx].resource_id;
+                window_timestamps[w_size] = current_ts;
+                w_size++;
+            }
+
+            // Bo cac log quas 60s
+            int expired_count = 0;
+            while (expired_count < w_size && (current_ts - window_timestamps[expired_count]) > TIME_WINDOW)
+            {
+                expired_count++;
+            }
+            
+            if (expired_count > 0)
+            {
+                for (int k = expired_count; k < w_size; k++)
+                {
+                    window_resources[k - expired_count] = window_resources[k];
+                    window_timestamps[k - expired_count] = window_timestamps[k];
+                }
+                w_size -= expired_count;
+            }
+            
+            // Dem so luong resource khac nhau
+            int unique_count = 0;
+            for (int j = 0; j < w_size; j++)
+            {
+                bool is_duplicate = false;
+                for (int k = 0; k < j; k++)
+                {
+                    if (window_resources[j] == window_resources[k])
+                    {
+                        is_duplicate = true;
+                        break;
+                    }
+                }
+                if (!is_duplicate) unique_count++;
+            }
+
+            // Kiem tra nguong
+            if (unique_count >= RESOURCE_THRESHOLD)
+            {
+                fprintf(f_out, "%.*s,%d,%lld\n", 
+                       (int)device_sv.size(), device_sv.data(), 
+                       unique_count, current_ts);
+                total_violations++;
+                violated = true; // Ngắt để xét device tiếp theo
+            }
+            
+            curr_idx = logs[curr_idx].next_device_log;
+        }
+    }
+
+    fclose(f_out);
+    cout << "[Bao cao] Phat hien " << total_violations << " thiet bi quet tai nguyen bat thuong.\n";
+    cout << "[Bao cao] Chi tiet duoc luu tai file: " << out_filename << "\n";
+}
+
+void detectOutsideWorkingHours(const StringDict &users, const Log *logs, const char* out_filename)
+{
+    FILE *f_out = fopen(out_filename, "w");
+    if (f_out == nullptr)
+    {
+        cout << "Loi: Khong the tao file bao cao " << out_filename << "\n";
+        return;
+    }
+
+    fprintf(f_out, "user_id,outside_access_count,last_outside_timestamp\n");
+    int total_violations = 0;
+
+    for (int i = 0; i < users.capacity; i++)
+    {
+        if (users.nodes[i].id == -1) continue;
+
+        int32_t curr_idx = users.nodes[i].head_log_index;
+        string_view user_sv = users.nodes[i].key;
+
+        int outside_count = 0;
+        long long last_ts = 0;
+
+        while (curr_idx != -1)
+        {
+            time_t raw_time = (time_t)logs[curr_idx].timestamp;
+            struct tm timeinfo;
+            
+            // Chuyen doi timestamp sang cau truc thoi gian tuong ung
+            localtime_r(&raw_time, &timeinfo);
+
+            // tm_weekday: 0 - Chu Nhat, 6 - Thu 7
+            bool is_weekend = (timeinfo.tm_wday == 0 || timeinfo.tm_wday == 6);
+            
+            // tm__ouside_hour: 0 - 23
+            bool is_outside_hours = (timeinfo.tm_hour < 8 || timeinfo.tm_hour >= 18);
+
+            if (is_weekend || is_outside_hours)
+            {
+                outside_count++;
+                last_ts = logs[curr_idx].timestamp;
+            }
+
+            curr_idx = logs[curr_idx].next_user_log;
+        }
+
+        if (outside_count > 0)
+        {
+            fprintf(f_out, "%.*s,%d,%lld\n", 
+                   (int)user_sv.size(), user_sv.data(), 
+                   outside_count, last_ts);
+            total_violations++;
+        }
+    }
+
+    fclose(f_out);
+    cout << "[Bao cao] Phat hien " << total_violations << " nguoi dung co hoat dong ngoai gio lam viec.\n";
+    cout << "[Bao cao] Chi tiet duoc luu tai file: " << out_filename << "\n";
+}

@@ -95,4 +95,8 @@ void detectConsecutiveFailedLogins(const StringDict &users, const Log *logs,
                                     const char* out_filename);
 void detectMultipleDevicesLogin(const StringDict &users, const Log *logs, 
                                 const char* out_filename);
+void detectAbnormalResourceAccess(const StringDict &devices, const Log *logs, 
+                                const char* out_filename);
+void detectOutsideWorkingHours(const StringDict &users, const Log *logs, 
+                                    const char* out_filename);
 #endif

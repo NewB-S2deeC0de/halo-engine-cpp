@@ -257,9 +257,71 @@ int main()
                     freeMemory(log_list, buffer, user_dict, device_dict, app_dict, resource_dict);
                     cout << "[He thong] Da thu hoi toan bo bo nho khoi RAM.\n";
                 }
-                else if (sub_choice == 3 || sub_choice == 4)
+                else if (sub_choice == 3)
                 {
-                    cout << "=> [He thong] Tinh nang dang duoc phat trien...\n";
+                    Log *log_list = nullptr;
+                    char *buffer = nullptr;
+                    int cnt = 0;
+
+                    StringDict user_dict;
+                    StringDict device_dict;
+                    StringDict app_dict;
+                    StringDict resource_dict;
+
+                    auto now = std::chrono::system_clock::now();
+                    long long current_ts = std::chrono::duration_cast<std::chrono::seconds>(now.time_since_epoch()).count();
+
+                    auto start = std::chrono::high_resolution_clock::now();
+
+                    bool is_init = initAndLoadData(log_list, buffer, cnt, user_dict, device_dict, app_dict, resource_dict, current_ts);
+                    if (is_init)
+                    {
+                        detectAbnormalResourceAccess(device_dict, log_list, "abnormal_resources_report.csv");
+                    }
+                    else
+                    {
+                        cout << "Loi: khong the tai du lieu tu file\n";
+                    }
+
+                    auto end = std::chrono::high_resolution_clock::now();
+                    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+                    cout << "\n[Thoi gian thuc thi]: " << duration.count() << "ms\n";
+
+                    freeMemory(log_list, buffer, user_dict, device_dict, app_dict, resource_dict);
+                    cout << "[He thong] Da thu hoi toan bo bo nho khoi RAM.\n";
+                }
+                else if (sub_choice == 4)
+                {
+                    Log *log_list = nullptr;
+                    char *buffer = nullptr;
+                    int cnt = 0;
+
+                    StringDict user_dict;
+                    StringDict device_dict;
+                    StringDict app_dict;
+                    StringDict resource_dict;
+
+                    auto now = std::chrono::system_clock::now();
+                    long long current_ts = std::chrono::duration_cast<std::chrono::seconds>(now.time_since_epoch()).count();
+
+                    auto start = std::chrono::high_resolution_clock::now();
+
+                    bool is_init = initAndLoadData(log_list, buffer, cnt, user_dict, device_dict, app_dict, resource_dict, current_ts);
+                    if (is_init)
+                    {
+                        detectOutsideWorkingHours(user_dict, log_list, "outside_hours_report.csv");
+                    }
+                    else
+                    {
+                        cout << "Loi: khong the tai du lieu tu file\n";
+                    }
+
+                    auto end = std::chrono::high_resolution_clock::now();
+                    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+                    cout << "\n[Thoi gian thuc thi]: " << duration.count() << "ms\n";
+
+                    freeMemory(log_list, buffer, user_dict, device_dict, app_dict, resource_dict);
+                    cout << "[He thong] Da thu hoi toan bo bo nho khoi RAM.\n";
                 }
                 else
                 {
