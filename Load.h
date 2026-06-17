@@ -91,6 +91,8 @@ struct TopResource
 void queryTop10Resources(long long t1, long long t2,
                          const StringDict &resources, Log *logs);
 
-void detectConsecutiveFailedLogins(const StringDict &users, const Log *logs, const char* out_filename);
-
+void detectConsecutiveFailedLogins(const StringDict &users, const Log *logs, 
+                                    const char* out_filename);
+void detectMultipleDevicesLogin(const StringDict &users, const Log *logs, 
+                                const char* out_filename);
 #endif

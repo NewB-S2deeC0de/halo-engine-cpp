@@ -920,3 +920,95 @@ void detectConsecutiveFailedLogins(const StringDict &users, const Log *logs, con
     cout << "[Bao cao] Phat hien " << total_long_violations << " vi pham DAI (Low-and-Slow).\n";
     cout << "[Bao cao] Chi tiet duoc luu tai file: " << out_filename << "\n";
 }
+
+void detectMultipleDevicesLogin(const StringDict &users, const Log *logs, const char* out_filename)
+{
+    FILE *f_out = fopen(out_filename, "w");
+    if (f_out == nullptr)
+    {
+        cout << "Loi: Khong the tao file bao cao " << out_filename << "\n";
+        return;
+    }
+
+    fprintf(f_out, "user_id,unique_devices_count,window_end_timestamp\n");
+    int total_violations = 0;
+
+    const int DEVICE_THRESHOLD = 3;             // >= 3 thiet bi khac nhau
+    const long long TIME_WINDOW = 10 * 60;      // 600s
+
+    for (int i = 0; i < users.capacity; i++)
+    {
+        if (users.nodes[i].id == -1) 
+        {
+            continue;
+        }
+
+        int32_t curr_idx = users.nodes[i].head_log_index;
+        bool violated = false;
+        string_view user_sv = users.nodes[i].key;
+
+        int32_t window_devices[100];
+        long long window_timestamps[100];
+        int w_size = 0;
+
+        while (curr_idx != -1 && !violated)
+        {
+            if (logs[curr_idx].event_type_index == 0) // LOGIN
+            {
+                long long current_ts = logs[curr_idx].timestamp;
+
+                if (w_size < 100)
+                {
+                    window_devices[w_size] = logs[curr_idx].device_id;
+                    window_timestamps[w_size] = current_ts;
+                    w_size++;
+                }
+
+                int expired_count = 0;
+                while (expired_count < w_size && (current_ts - window_timestamps[expired_count]) > TIME_WINDOW)
+                {
+                    expired_count++;
+                }
+                
+                if (expired_count > 0)
+                {
+                    for (int k = expired_count; k < w_size; k++)
+                    {
+                        window_devices[k - expired_count] = window_devices[k];
+                        window_timestamps[k - expired_count] = window_timestamps[k];
+                    }
+                    w_size -= expired_count;
+                }
+
+                int unique_count = 0;
+                for (int j = 0; j < w_size; j++)
+                {
+                    bool is_duplicate = false;
+                    for (int k = 0; k < j; k++)
+                    {
+                        if (window_devices[j] == window_devices[k])
+                        {
+                            is_duplicate = true;
+                            break;
+                        }
+                    }
+                    if (!is_duplicate) unique_count++;
+                }
+
+                if (unique_count >= DEVICE_THRESHOLD)
+                {
+                    fprintf(f_out, "%.*s,%d,%lld\n", 
+                           (int)user_sv.size(), user_sv.data(), 
+                           unique_count, current_ts);
+                    total_violations++;
+                    violated = true; 
+                }
+            }
+            curr_idx = logs[curr_idx].next_user_log;
+        }
+    }
+
+    fclose(f_out);
+    cout << "[Bao cao] Phat hien " << total_violations << " nguoi dung dang nhap nhieu thiet bi bat thuong.\n";
+    cout << "[Bao cao] Chi tiet duoc luu tai file: " << out_filename << "\n";
+}
