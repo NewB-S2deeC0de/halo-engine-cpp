@@ -2,6 +2,7 @@
 #include <string>
 #include <chrono>
 #include "Load.h"
+// #include "Load.cpp"
 
 
 using std::cin;
@@ -30,6 +31,7 @@ int main()
         cout << "1. Truy van hanh trinh cua nguoi dung (User ID)\n";
         cout << "2. Truy van hanh trinh cua tai nguyen (Resource ID)\n";
         cout << "3. Thong ke Top 10 tai nguyen duoc truy cap nhieu nhat\n";
+        cout << "4. Phat hien bat thuong dua tren nguong (Xuat CSV)\n";
         cout << "0. Thoat chuong trinh\n";
         cout << "================================================================\n";
         cout << "Nhap lua chon cua ban: ";
@@ -163,6 +165,75 @@ int main()
             freeMemory(log_list, buffer, user_dict, device_dict, app_dict, resource_dict);
             cout << "[He thong] Da thu hoi toan bo bo nho khoi RAM.\n";
         }
+        else if (choice == 4)
+        {
+            int sub_choice;
+            while (true)
+            {
+                cout << "\n--- PHAT HIEN BAT THUONG DUA TREN NGUONG ---\n";
+                cout << "1. Nguoi dung dang nhap tu qua nhieu device trong thoi gian ngan\n";
+                cout << "2. Nguoi dung login that bai lien tuc\n";
+                cout << "3. Mot thiet bi dot ngot truy cap qua nhieu resource khac nhau\n";
+                cout << "4. Truy cap ngoai gio lam viec\n";
+                cout << "0. Quay lai menu chinh\n";
+                cout << "----------------------------------------------\n";
+                cout << "Nhap lua chon cua ban: ";
+
+                if (!(cin >> sub_choice))
+                {
+                    cin.clear();
+                    while(cin.get() != '\n'); 
+                    cout << "Ky tu khong hop le. Quay lai menu chinh...\n";
+                    break;
+                }
+
+                if (sub_choice == 0)
+                {
+                    break; 
+                }
+                else if (sub_choice == 2)
+                {
+                    Log *log_list = nullptr;
+                    char *buffer = nullptr;
+                    int cnt = 0;
+
+                    StringDict user_dict;
+                    StringDict device_dict;
+                    StringDict app_dict;
+                    StringDict resource_dict;
+
+                    auto now = std::chrono::system_clock::now();
+                    long long current_ts = std::chrono::duration_cast<std::chrono::seconds>(now.time_since_epoch()).count();
+
+                    auto start = std::chrono::high_resolution_clock::now();
+
+                    bool is_init = initAndLoadData(log_list, buffer, cnt, user_dict, device_dict, app_dict, resource_dict, current_ts);
+                    if (is_init)
+                    {
+                        detectConsecutiveFailedLogins(user_dict, log_list, "failed_logins_report.csv");
+                    }
+                    else
+                    {
+                        cout << "Loi: khong the tai du lieu tu file\n";
+                    }
+
+                    auto end = std::chrono::high_resolution_clock::now();
+                    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+                    cout << "\n[Thoi gian thuc thi]: " << duration.count() << "ms\n";
+
+                    freeMemory(log_list, buffer, user_dict, device_dict, app_dict, resource_dict);
+                    cout << "[He thong] Da thu hoi toan bo bo nho khoi RAM.\n";
+                }
+                else if (sub_choice == 1 || sub_choice == 3 || sub_choice == 4)
+                {
+                    cout << "=> [He thong] Tinh nang dang duoc phat trien...\n";
+                }
+                else
+                {
+                    cout << "Lua chon khong hop le.\n";
+                }
+            }
+        }
         else
         {
             cout << "Lua chon khong hop le. Chuong trinh dang thoat...\n";
@@ -199,6 +270,7 @@ bool initAndLoadData(Log *&log_list, char *&buffer, int &cnt,
     {
         rebuildUserChains(user_dict, log_list, cnt);
         rebuildResourceChains(resource_dict, log_list, cnt);
+        rebuildDeviceChains(device_dict, log_list, cnt);
         return true;
     }
 

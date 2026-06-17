@@ -400,7 +400,7 @@ void loadData(const char *filename, Log *&logs, StringDict &users, StringDict &d
             logs[count].user_id = users.getOrAdd(user_sv, count, logs[count].next_user_log, CAPACITY);
             logs[count].resource_id = resources.getOrAdd(resource_sv, count, logs[count].next_resource_log, CAPACITY);
 
-            logs[count].device_id = devices.getOrAddSimple(device_sv, CAPACITY);
+            logs[count].device_id = devices.getOrAdd(device_sv, count, logs[count].next_device_log, CAPACITY);
             logs[count].app_id = apps.getOrAddSimple(app_sv, APP_CAPACITY);
 
             logs[count].event_type_index = event_type_idx;
@@ -557,6 +557,47 @@ void rebuildResourceChains(StringDict &dict, Log *logs, int line_count)
         }
 
         logs[temp_indices[count - 1]].next_resource_log = -1;
+    }
+
+    delete[] temp_indices;
+}
+
+void rebuildDeviceChains(StringDict &dict, Log* logs, int line_count) {
+    int32_t *temp_indices = new int32_t[line_count];
+
+    for (int i = 0; i < dict.capacity; i++)
+    {
+        int32_t curr_index = dict.nodes[i].head_log_index;
+
+        if (curr_index == -1)
+        {
+            continue;
+        }
+
+        int count = 0;
+        while (curr_index != -1)
+        {
+            temp_indices[count] = curr_index;
+            count++;
+
+            curr_index = logs[curr_index].next_device_log;
+        }
+
+        if (count <= 1)
+        {
+            continue;
+        }
+
+        quickSort(temp_indices, 0, count - 1, logs);
+
+        dict.nodes[i].head_log_index = temp_indices[0];
+
+        for (int k = 0; k < count - 1; k++)
+        {
+            logs[temp_indices[k]].next_device_log = temp_indices[k + 1];
+        }
+
+        logs[temp_indices[count - 1]].next_device_log = -1;
     }
 
     delete[] temp_indices;
@@ -759,4 +800,123 @@ void queryTop10Resources(long long t1, long long t2,
     {
         cout << "Khong co truy cap nao den tai nguyen trong thoi gian nay\n";
     }
+}
+
+void detectConsecutiveFailedLogins(const StringDict &users, const Log *logs, const char* out_filename)
+{
+    FILE *f_out = fopen(out_filename, "w");
+    if (f_out == nullptr)
+    {
+        cout << "Khong the tao file bao cao " << out_filename << "/n";
+        return;
+    }
+
+    fprintf(f_out, "user_id,violation_type,failed_count\n");
+
+    int total_short_violations = 0;
+    int total_long_violations = 0;
+
+    // Cac hang so cho cua so truot
+    const int SHORT_LIMIT = 5;
+    const long long SHORT_TIME = 60;
+
+    const int LONG_LIMIT = 10;
+    const long long LONG_TIME = 3 * 24 * 60 * 60;
+
+    for (int i = 0; i < users.capacity; i++) 
+    {
+        if (users.nodes[i].id == -1)
+        {
+            continue;
+        }
+
+        int32_t curr_idx = users.nodes[i].head_log_index;
+
+        long long short_window[SHORT_LIMIT];
+        int short_count = 0;
+
+        long long long_window[LONG_LIMIT];
+        int long_count = 0;
+
+        bool short_violated = false;
+        bool long_violated = false;
+
+        string_view user_sv = users.nodes[i].key;
+
+        while (curr_idx != -1) 
+        {
+            if (logs[curr_idx].event_type_index == 4)   // FAILED_LOGIN
+            {
+                long long ts = logs[curr_idx].timestamp;
+
+                if (!short_violated)
+                {
+                    short_window[short_count] = ts;
+                    short_count++;
+
+                    if (short_count == SHORT_LIMIT)
+                    {
+                        if (short_window[SHORT_LIMIT - 1] - short_window[0] <= SHORT_TIME)
+                        {
+                            short_violated = true;
+                            fprintf(f_out, "%.*s,SHORT_BURST,%lld\n", 
+                                    (int)user_sv.size(), user_sv.data(), ts);
+                            total_short_violations++;
+                        }
+                        else
+                        {
+                            // Xoa phan tu dau tien
+                            for (int k = 0; k < SHORT_LIMIT - 1; k++) 
+                            {
+                                short_window[k] = short_window[k + 1];
+                            }
+                            short_count--;
+                        }
+                    }
+                }
+
+                if (!long_violated)
+                {
+                    long_window[long_count] = ts;
+                    long_count++;
+                    if (long_count == LONG_LIMIT)
+                    {
+                        if (long_window[LONG_LIMIT - 1] - long_window[0] <= LONG_TIME)
+                        {
+                            long_violated = true;
+                            fprintf(f_out, "%.*s,LONG_SLOW,%lld\n", 
+                                    (int)user_sv.size(), user_sv.data(), ts);
+                            total_long_violations++;
+                        }
+                        else
+                        {
+                            // Dich cua so len 1 log
+                            for (int k = 0; k < LONG_LIMIT - 1; k++) {
+                                long_window[k] = long_window[k + 1];
+                            }
+                            long_count--;
+                        }
+                    }
+                }
+
+                if (short_violated && long_violated)
+                {
+                    break;
+                }
+            }
+
+            else if (logs[curr_idx].event_type_index == 0)
+            {
+                short_count = 0;
+                long_count = 0;
+            }
+
+            curr_idx = logs[curr_idx].next_user_log;
+        }
+    }
+
+    fclose(f_out);
+    cout << "[Bao cao] Phat hien " << total_short_violations << " vi pham NGAN (Brute-force).\n";
+    cout << "[Bao cao] Phat hien " << total_long_violations << " vi pham DAI (Low-and-Slow).\n";
+    cout << "[Bao cao] Chi tiet duoc luu tai file: " << out_filename << "\n";
 }
